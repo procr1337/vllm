@@ -78,8 +78,8 @@ if TYPE_CHECKING:
     VLLM_DCP_INDEXER_SHARDS: int = 0
     VLLM_DCP_GLOBAL_TOPK: bool = True
     VLLM_DCP_QUERY_SPLIT: bool = False
-    VLLM_DCP_TOPK_OWNER_MERGE: bool = False
     VLLM_DCP_QUERY_SPLIT_MIN_CONTEXT_TOKENS: int = 0
+    VLLM_DCP_TOPK_OWNER_MERGE: bool = False
     VLLM_B12X_MLA_CKV_GATHER: bool = False
     VLLM_B12X_MLA_CKV_GATHER_MIN_TOKENS: int = 16
     VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS: int = 524288
@@ -1185,17 +1185,17 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "VLLM_DCP_QUERY_SPLIT": lambda: (
         os.getenv("VLLM_DCP_QUERY_SPLIT", "0").lower() in ("1", "true", "yes", "on")
     ),
+    # Keep query-split process groups initialized while selecting the faster
+    # full-query path below a deployment-calibrated context crossover.
+    "VLLM_DCP_QUERY_SPLIT_MIN_CONTEXT_TOKENS": lambda: int(
+        os.getenv("VLLM_DCP_QUERY_SPLIT_MIN_CONTEXT_TOKENS", "0")
+    ),
     # Send each query row's exact FP32 top-k candidates to one DCP owner, merge
     # once there, then gather only the final indices over TP. This is an
     # opt-in prefill path until the full TP/DCP validation matrix is complete.
     "VLLM_DCP_TOPK_OWNER_MERGE": lambda: (
         os.getenv("VLLM_DCP_TOPK_OWNER_MERGE", "0").lower()
         in ("1", "true", "yes", "on")
-    ),
-    # Keep query-split process groups initialized while selecting the faster
-    # full-query path below a deployment-calibrated context crossover.
-    "VLLM_DCP_QUERY_SPLIT_MIN_CONTEXT_TOKENS": lambda: int(
-        os.getenv("VLLM_DCP_QUERY_SPLIT_MIN_CONTEXT_TOKENS", "0")
     ),
     "VLLM_B12X_MLA_CKV_GATHER": lambda: (
         os.getenv("VLLM_B12X_MLA_CKV_GATHER", "0").lower() in ("1", "true", "yes", "on")
@@ -2270,6 +2270,24 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # Each entry is VAR_NAME or VAR_NAME:<suffix> (suffix appended to
     # RDMA device name). Must be set together with VLLM_GPU_NIC_PCIE_MAPPING.
     "VLLM_NIC_SELECTION_VARS": lambda: os.getenv("VLLM_NIC_SELECTION_VARS", ""),
+    # --- EXL3 Trellis MoE runtime knobs (read directly by
+    # model_executor/layers/quantization/exl3.py; registered here so startup
+    # does not flag them as unknown). All are passthrough: consuming code
+    # applies its own context-dependent defaults (e.g. the Trellis window
+    # minimum defaults to MIN_CAPTURABLE_TRELLIS_M=1 for draft layers and 4
+    # for target layers when unset).
+    "VLLM_EXL3_TRELLIS_MIN_M": lambda: os.getenv("VLLM_EXL3_TRELLIS_MIN_M"),
+    "VLLM_EXL3_TRELLIS_MAX_M": lambda: os.getenv("VLLM_EXL3_TRELLIS_MAX_M"),
+    "VLLM_EXL3_TRELLIS_BLOCK_M": lambda: os.getenv("VLLM_EXL3_TRELLIS_BLOCK_M"),
+    "VLLM_EXL3_PREFILL_CHUNK": lambda: os.getenv("VLLM_EXL3_PREFILL_CHUNK"),
+    "VLLM_EXL3_PREFILL_TRELLIS": lambda: os.getenv("VLLM_EXL3_PREFILL_TRELLIS"),
+    "VLLM_EXL3_PREFILL_BLOCK_M": lambda: os.getenv("VLLM_EXL3_PREFILL_BLOCK_M"),
+    # Prebuilt exllamav3 extension location and torch-ABI compatibility shim.
+    "VLLM_EXL3_EXT_PATH": lambda: os.getenv("VLLM_EXL3_EXT_PATH"),
+    "VLLM_EXL3_ABI_SHIM": lambda: os.getenv("VLLM_EXL3_ABI_SHIM"),
+    # Calibrated MLA outer scales for the nvfp4_ds_mla KV cache.
+    "VLLM_NVFP4_MLA_SCALES_FILE": lambda: os.getenv("VLLM_NVFP4_MLA_SCALES_FILE"),
+
 }
 
 
