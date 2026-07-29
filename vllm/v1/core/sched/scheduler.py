@@ -719,6 +719,39 @@ class Scheduler(SchedulerInterface):
                     step_skipped_waiting.prepend_request(request)
                     continue
 
+                # Gate the number of concurrently-running low-priority (P1+)
+                # long-prefill requests so that P0 (interactive) requests
+                # always have token-budget headroom.
+                #
+                # A request is a "long prefill" if:
+                #   - its full prompt is longer than long_prefill_token_threshold
+                #   - it has priority >= 1 (i.e. not P0)
+                # We count RUNNING requests that are still in the prefill phase
+                # (num_computed_tokens < num_prompt_tokens).  We use that raw
+                # comparison rather than is_prefill_chunk so the count is
+                # accurate for requests just admitted earlier in the same loop
+                # iteration (is_prefill_chunk is only updated by
+                # _update_after_schedule at the end of the step).
+                _max_clf = self.scheduler_config.max_low_priority_prefills
+                _clf_threshold = self.scheduler_config.long_prefill_token_threshold
+                if (
+                    _max_clf > 0
+                    and _clf_threshold > 0
+                    and request.priority >= 1
+                    and request.num_prompt_tokens > _clf_threshold
+                ):
+                    num_running_long_prefills = sum(
+                        1
+                        for r in self.running
+                        if r.priority >= 1
+                        and r.num_prompt_tokens > _clf_threshold
+                        and r.num_computed_tokens < r.num_prompt_tokens
+                    )
+                    if num_running_long_prefills >= _max_clf:
+                        request_queue.pop_request()
+                        step_skipped_waiting.prepend_request(request)
+                        continue
+
                 num_external_computed_tokens = 0
                 load_kv_async = False
                 connector_prefix_cache_queries, connector_prefix_cache_hits = 0, 0
