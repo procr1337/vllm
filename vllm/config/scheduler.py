@@ -67,6 +67,17 @@ class SchedulerConfig:
     In real usage, this should be set in `EngineArgs.create_engine_config`.
     """
 
+    max_low_priority_prefills: int = Field(default=0, ge=0)
+    """Maximum number of low-priority (priority >= 1) requests that may be
+    actively prefilling (prompt not yet fully processed) in RUNNING state
+    simultaneously.  Only requests whose prompt length exceeds
+    long_prefill_token_threshold are counted; short low-priority prompts and
+    all decode traffic are unaffected.  0 (the default) disables the limit.
+    When the limit is reached, additional waiting low-priority long-prefill
+    requests are deferred to skipped_waiting, capping the aggregate token
+    budget consumed by low-priority prefill and preserving headroom for
+    high-priority (P0) traffic.  Requires long_prefill_token_threshold > 0."""
+
     long_prefill_token_threshold: int = Field(default=0, ge=0)
     """For chunked prefill, a request is considered long if the prompt is
     longer than this number of tokens. 0 disables the cap (default)."""
@@ -280,6 +291,12 @@ class SchedulerConfig:
                 "long_prefill_token_threshold "
                 f"({self.long_prefill_token_threshold}) cannot be greater "
                 f"than the max_model_len ({max_model_len})."
+            )
+
+        if self.max_low_priority_prefills > 0 and self.long_prefill_token_threshold == 0:
+            raise ValueError(
+                "max_low_priority_prefills requires long_prefill_token_threshold > 0. "
+                "Set --long-prefill-token-threshold to a positive value."
             )
 
         return self
